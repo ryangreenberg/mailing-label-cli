@@ -1,0 +1,20 @@
+#!/usr/bin/env ruby
+
+bin_root = File.expand_path('..', __FILE__)
+examples_root = File.expand_path('../../examples', __FILE__)
+examples_dirs = Dir.glob("#{examples_root}/*")
+
+examples_dirs.each do |example_dir|
+    puts "examples/#{File.basename(example_dir)}"
+    # Add bin directory to path so examples can call commands directly
+    ENV['PATH'] = bin_root + ':' + ENV['PATH']
+
+    Dir.chdir(example_dir) do
+        run_path = File.expand_path('run.sh')
+        run = File.read(run_path)
+        is_success = system(run_path)
+        warn "ERROR: Failed to run #{run_path}" unless is_success
+    end
+    puts "-" * 80
+end
+
