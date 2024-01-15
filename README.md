@@ -25,3 +25,7 @@ Run `bin/examples` to generate the output of all examples. To run a single examp
 cd examples/debug
 PATH="../../bin:$PATH" ./run.sh
 ```
+
+## Acknowledgements
+
+Some of the code in this tool is adapted from [prawn-labels](https://github.com/jordanbyron/prawn-labels).
