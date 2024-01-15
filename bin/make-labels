@@ -1,0 +1,233 @@
+#!/usr/bin/env ruby
+
+require 'bundler/setup'
+require 'prawn'
+require 'optparse'
+require 'debug'
+
+def parse(args)
+    options = {
+        template: Templates.default,
+        output: 'output.pdf',
+        fonts: {},
+
+        content: nil,
+        merge_data: nil,
+        format: nil,
+    }
+
+    OptionParser.new do |opts|
+        opts.on('--template NAME', "Label template to use for layout (default: #{options[:template]})") do |template|
+            template = template.to_sym
+            unless Templates.all.include?(template.to_sym)
+                known = Templates.all.keys.join(", ")
+                raise OptionParser::InvalidArgument, "Unknown template '#{template}'\nSupported templates: #{known}"
+            end
+            options[:template] = template
+        end
+
+        opts.on('--content CONTENT', "Content to repeat on each label") do |content|
+            options[:content] = content
+        end
+
+        opts.on('--merge-data FILE', "Path to TSV with rows to populate labels") do |file|
+            options[:merge_data] = file
+        end
+
+        opts.on('--output FILE', "Path to write output PDF") do |file|
+            options[:output] = file
+        end
+
+        opts.on('--format STRING', "Template string to generate label from rows in merge data") do |fmt|
+            options[:format] = fmt
+        end
+
+        opts.on('--font PATH', "Add font with name and path (example: MyFont:./path/my_font.ttf)") do |font|
+            name, path = font.split(':', 2)
+            unless name && path
+                raise OptionParser::InvalidArgument, "Cannot parse font_name:font_path from '#{font}'"
+            end
+            options[:fonts][name] = path
+        end
+
+        opts.separator "FORMAT STRINGS"
+        opts.separator "A format string can reference any column in the merge data with an ampersand."
+        opts.separator "Use %n for newline"
+        opts.separator "You can use any of the inline pseudo-formatting that Prawn supports"
+        opts.separator "From https://prawnpdf.org/manual.pdf:"
+        opts.separator " > Supported tags are: b (bold), i (italic), u (underline), strikethrough, sub (subscript), sup (superscript)"
+        opts.separator " > The following tags accept specific attributes: font accepts size, name, and"
+        opts.separator " > character_spacing; color accepts rgb and cmyk; link accepts href for external links."
+    end.parse(args)
+
+    options
+end
+
+module Templates
+    def self.default
+        :avery_5160
+    end
+
+    # Measurements for margins and gutters are expressed
+    # in PostScript points (72 pts)
+    def self.all
+        {
+            avery_5160: {
+                paper_size: 'LETTER',
+
+                top_margin: 36,
+                bottom_margin: 36,
+                left_margin: 15.822,
+                right_margin: 15.822,
+
+                columns: 3,
+                rows: 10,
+
+                column_gutter: 15,
+                row_gutter: 0 ,
+            }
+        }
+    end
+end
+
+
+def main(args)
+    options = begin
+        parse(args)
+    rescue OptionParser::InvalidArgument => ex
+        warn ex
+        exit 1
+    end
+
+    template_name = (options[:template] || :avery_5160).to_sym
+    template = Templates.all[template_name]
+
+    merge_data = options[:merge_data]
+    content = options[:content]
+
+    if merge_data && content
+        abort "Cannot specify --merge-data and --content"    
+    end
+
+    # merge_data => generate pages for each row
+    # content => generate one page of labels with content on each label
+    # debug => labels with outline
+    content_mode = if merge_data
+        :merge_data
+    elsif content
+        :content
+    else
+        :debug
+    end
+
+    if content_mode == :merge_data
+        rows = File.read(merge_data).split("\n").map {|line| line.split("\t")}
+        headers = rows.first.map {|ea| ea.strip }
+        rows = rows[1..-1].map {|row| headers.zip(row).to_h }
+
+        warn "Rows: #{rows.size}"
+        warn "Headers: #{headers.inspect}"
+    end
+
+
+    warn "Template: #{template_name}"
+    warn template.inspect
+    warn "Output: #{options[:output]}"
+
+
+    document = Prawn::Document.new({
+        :page_size      => template[:paper_size],
+        :top_margin     => template[:top_margin],
+        :bottom_margin  => template[:bottom_margin],
+        :left_margin    => template[:left_margin],
+        :right_margin   => template[:right_margin]
+    })
+    document.define_grid({
+        :columns       => template[:columns],
+        :rows          => template[:rows],
+        :column_gutter => template[:column_gutter],
+        :row_gutter    => template[:row_gutter]
+    })
+
+    options[:fonts].each do |font_name, font_path|
+        filename = File.basename(font_path)
+        document.font_families.update(
+            font_name => {
+               normal: font_path
+            }
+        )
+        warn "Registered font #{font_name} from #{font_path}"
+    end
+
+    case content_mode
+    when :debug
+        1.upto(template[:columns]) do |col|
+            1.upto(template[:rows]) do |row|
+                # text is 1-indexed; offsets are 0-indexed
+                grid_box = document.grid(row - 1, col - 1)
+                grid_box.bounding_box do
+                    document.stroke_bounds
+                    document.text "Row #{row}, col #{col}", align: :center, valign: :center
+                end
+            end
+        end
+
+    when :merge_data
+        curr_page = 0
+        per_page = document.grid.columns * document.grid.rows
+
+        rows.each.with_index do |row, idx|
+            page_idx, idx_on_page = idx.divmod(per_page)
+            
+            if page_idx > curr_page
+                document.start_new_page
+                curr_page = page_idx
+                document.define_grid({
+                    :columns       => template[:columns],
+                    :rows          => template[:rows],
+                    :column_gutter => template[:column_gutter],
+                    :row_gutter    => template[:row_gutter]
+                })
+            end
+
+            row_idx, col_idx = idx_on_page.divmod(document.grid.columns)
+            grid_box = document.grid(row_idx, col_idx)
+            grid_box.bounding_box do
+
+                if options[:format]
+                    content = options[:format]
+                    row.each do |k, v|
+                        content = content.gsub(/%#{k}/, v || '')
+                    end
+                    content = content.gsub(/%n/, "\n")
+                else
+                    content = row.map {|k,v| "#{k}: #{v}" }.join(" ")
+                end
+
+                document.text content, align: :center, valign: :center, inline_format: true
+            end
+        end
+
+    
+    when :content
+        content = options[:content].gsub(/%n/, "\n")
+
+        1.upto(template[:columns]) do |col|
+            1.upto(template[:rows]) do |row|
+                # text is 1-indexed; offsets are 0-indexed
+                grid_box = document.grid(row - 1, col - 1)
+                grid_box.bounding_box do
+                    document.stroke_bounds
+                    document.text content, align: :center, valign: :center, inline_format: true
+                end
+            end
+        end
+        
+    else
+        abort "unsupported content mode #{content_mode.inspect}"
+    end
+
+    document.render_file options[:output]
+end
+
+main(ARGV) if $PROGRAM_NAME == __FILE__
