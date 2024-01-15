@@ -1,12 +1,11 @@
 GEM
   remote: https://rubygems.org/
   specs:
+    matrix (0.4.2)
     pdf-core (0.9.0)
     prawn (2.4.0)
       pdf-core (~> 0.9.0)
       ttfunk (~> 1.7)
-    prawn-labels (1.2.6)
-      prawn (>= 1.0.0, < 3.0.0)
     ttfunk (1.7.0)
 
 PLATFORMS
@@ -14,8 +13,8 @@ PLATFORMS
   x86_64-darwin-22
 
 DEPENDENCIES
+  matrix (~> 0.4.2)
   prawn (~> 2.4)
-  prawn-labels (~> 1.2)
 
 BUNDLED WITH
    2.5.3

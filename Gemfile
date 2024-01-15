@@ -2,8 +2,5 @@
 
 source "https://rubygems.org"
 
-# gem "rails"
-
 gem "prawn", "~> 2.4"
-
-gem "prawn-labels", "~> 1.2"
+gem "matrix", "~> 0.4.2"
