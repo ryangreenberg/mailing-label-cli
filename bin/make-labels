@@ -3,7 +3,6 @@
 require 'bundler/setup'
 require 'prawn'
 require 'optparse'
-require 'debug'
 
 def parse(args)
     options = {
@@ -16,6 +15,20 @@ def parse(args)
         format: nil,
     }
 
+    format_docs =<<-EOS.gsub(/^ +/, '')
+        FORMATTING
+        A --format string can reference any column in the merge data with an ampersand.
+        If the columns of the --merge-data TSV are name and address, reference them
+        with %name and %address. Use %n for a newline character.
+        
+        You can use any of the inline pseudo-formatting that Prawn supports
+
+        From https://prawnpdf.org/manual.pdf:
+        > Supported tags are: b (bold), i (italic), u (underline), strikethrough, sub (subscript), sup (superscript)
+        > The following tags accept specific attributes: font accepts size, name, and
+        > character_spacing; color accepts rgb and cmyk; link accepts href for external links.
+    EOS
+
     OptionParser.new do |opts|
         opts.on('--template NAME', "Label template to use for layout (default: #{options[:template]})") do |template|
             template = template.to_sym
@@ -26,6 +39,21 @@ def parse(args)
             options[:template] = template
         end
 
+        opts.on('--output FILE', "Path to write output PDF (default: #{options[:output]})") do |file|
+            options[:output] = file
+        end
+
+        opts.on('--font PATH', "Add font with name and path (example: MyFont:path/to/my_font.ttf)") do |font|
+            name, path = font.split(':', 2)
+            unless name && path
+                raise OptionParser::InvalidArgument, "Cannot parse font_name:font_path from '#{font}'"
+            end
+            options[:fonts][name] = path
+        end
+
+        opts.separator ""
+        opts.separator "CONTENT"
+
         opts.on('--content CONTENT', "Content to repeat on each label") do |content|
             options[:content] = content
         end
@@ -34,30 +62,12 @@ def parse(args)
             options[:merge_data] = file
         end
 
-        opts.on('--output FILE', "Path to write output PDF") do |file|
-            options[:output] = file
-        end
-
         opts.on('--format STRING', "Template string to generate label from rows in merge data") do |fmt|
             options[:format] = fmt
         end
 
-        opts.on('--font PATH', "Add font with name and path (example: MyFont:./path/my_font.ttf)") do |font|
-            name, path = font.split(':', 2)
-            unless name && path
-                raise OptionParser::InvalidArgument, "Cannot parse font_name:font_path from '#{font}'"
-            end
-            options[:fonts][name] = path
-        end
-
-        opts.separator "FORMAT STRINGS"
-        opts.separator "A format string can reference any column in the merge data with an ampersand."
-        opts.separator "Use %n for newline"
-        opts.separator "You can use any of the inline pseudo-formatting that Prawn supports"
-        opts.separator "From https://prawnpdf.org/manual.pdf:"
-        opts.separator " > Supported tags are: b (bold), i (italic), u (underline), strikethrough, sub (subscript), sup (superscript)"
-        opts.separator " > The following tags accept specific attributes: font accepts size, name, and"
-        opts.separator " > character_spacing; color accepts rgb and cmyk; link accepts href for external links."
+        opts.separator "\n"
+        opts.separator format_docs
     end.parse(args)
 
     options
@@ -120,20 +130,8 @@ def main(args)
         :debug
     end
 
-    if content_mode == :merge_data
-        rows = File.read(merge_data).split("\n").map {|line| line.split("\t")}
-        headers = rows.first.map {|ea| ea.strip }
-        rows = rows[1..-1].map {|row| headers.zip(row).to_h }
-
-        warn "Rows: #{rows.size}"
-        warn "Headers: #{headers.inspect}"
-    end
-
-
     warn "Template: #{template_name}"
     warn template.inspect
-    warn "Output: #{options[:output]}"
-
 
     document = Prawn::Document.new({
         :page_size      => template[:paper_size],
@@ -159,6 +157,19 @@ def main(args)
         warn "Registered font #{font_name} from #{font_path}"
     end
 
+    warn "Content Mode: #{content_mode}"
+    if content_mode == :merge_data
+        warn "#{merge_data}:"
+        rows = File.read(merge_data).split("\n").map {|line| line.split("\t")}
+        headers = rows.first.map {|ea| ea.strip }
+        rows = rows[1..-1].map {|row| headers.zip(row).to_h }
+
+        warn "Rows: #{rows.size}"
+        warn "Headers: #{headers.inspect}"
+    end
+
+    warn "Output: #{options[:output]}"
+
     case content_mode
     when :debug
         1.upto(template[:columns]) do |col|
@@ -167,7 +178,7 @@ def main(args)
                 grid_box = document.grid(row - 1, col - 1)
                 grid_box.bounding_box do
                     document.stroke_bounds
-                    document.text "Row #{row}, col #{col}", align: :center, valign: :center
+                    document.text "row #{row}, column #{col}", align: :center, valign: :center
                 end
             end
         end
@@ -217,7 +228,6 @@ def main(args)
                 # text is 1-indexed; offsets are 0-indexed
                 grid_box = document.grid(row - 1, col - 1)
                 grid_box.bounding_box do
-                    document.stroke_bounds
                     document.text content, align: :center, valign: :center, inline_format: true
                 end
             end
