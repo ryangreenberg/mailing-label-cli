@@ -29,6 +29,16 @@ def parse(args)
         > character_spacing; color accepts rgb and cmyk; link accepts href for external links.
     EOS
 
+    templates = Templates.all
+        .map {|name, config| "  - #{name}: #{config[:rows]} rows, #{config[:columns]} columns" }
+        .join("\n")
+
+    template_docs =<<-EOS.gsub(/^ +/, '')
+        TEMPLATES
+        The following templates are supported:
+        #{templates}
+    EOS
+
     OptionParser.new do |opts|
         opts.on('--template NAME', "Label template to use for layout (default: #{options[:template]})") do |template|
             template = template.to_sym
@@ -66,8 +76,11 @@ def parse(args)
             options[:format] = fmt
         end
 
-        opts.separator "\n"
+        opts.separator ""
         opts.separator format_docs
+
+        opts.separator ""
+        opts.separator template_docs
     end.parse(args)
 
     options
@@ -94,6 +107,34 @@ module Templates
                 rows: 10,
 
                 column_gutter: 15,
+                row_gutter: 0 ,
+            },
+            avery_5195: {
+                paper_size: 'LETTER',
+
+                top_margin: 36,
+                bottom_margin: 36,
+                left_margin: 22,
+                right_margin: 22,
+
+                columns: 4,
+                rows: 15,
+
+                column_gutter: 22,
+                row_gutter: 0 ,
+            },
+            avery_15660: {
+                paper_size: 'LETTER',
+
+                top_margin: 36,
+                bottom_margin: 36,
+                left_margin: 14,
+                right_margin: 14,
+
+                columns: 3,
+                rows: 10,
+
+                column_gutter: 9,
                 row_gutter: 0 ,
             }
         }
