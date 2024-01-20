@@ -28,6 +28,11 @@ cd examples/debug
 PATH="../../bin:$PATH" ./run.sh
 ```
 
+## Related Software
+
+- [WeasyPrint](https://pypi.org/project/weasyprint/). "WeasyPrint is a smart solution helping web developers to create PDF documents. It turns simple HTML pages into gorgeous statistical reports, invoices, tickets…"
+- [Label Nation](https://code.librehq.com/kfogel/labelnation). "LabelNation is a command-line program for making labels: address labels, business cards, or anything else involving regularly-arranged rectangles on a printer-ready sheet"
+
 ## Acknowledgements
 
 Some of the code in this tool is adapted from [prawn-labels](https://github.com/jordanbyron/prawn-labels).
